@@ -1,25 +1,31 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
+﻿using System.Collections.Concurrent;
 using System.Net.Sockets;
+using Microsoft.Extensions.Caching.Memory;
 using TDSBridge.Common.Header;
+using TDSBridge.Common.Message;
 using TDSBridge.Common.Packet;
 
 namespace TDSBridge.Common
 {
     public enum ConnectionType { ClientBridge, BridgeSQL };
 
+    
+    
     public class BridgedConnection
     {
         public BridgeAcceptor BridgeAcceptor { get; protected set; }
         public SocketCouple SocketCouple { get; protected set; }
 
-        public BridgedConnection(BridgeAcceptor BridgeAcceptor, SocketCouple SocketCouple)
+        private ConcurrentQueue<TDSMessage> _messages = new();
+        
+        readonly IMemoryCache  _cache;
+        
+
+        public BridgedConnection(BridgeAcceptor BridgeAcceptor, SocketCouple SocketCouple, IMemoryCache cache)
         {
             this.BridgeAcceptor = BridgeAcceptor;
             this.SocketCouple = SocketCouple;
+            this._cache = cache;
         }
 
         public void Start()
@@ -75,6 +81,29 @@ namespace TDSBridge.Common
 
                     if ((header.StatusBitMask & StatusBitMask.END_OF_MESSAGE) == StatusBitMask.END_OF_MESSAGE)
                     {
+                        SQLBatchMessage bm = tdsMessage as SQLBatchMessage;
+
+                        if (bm != null)
+                        {
+                            var query = bm.GetBatchText();
+                            
+                            if (query.StartsWith("select"))
+                            {
+                                if (_cache.TryGetValue(query, out byte[] cacheBuffer))
+                                {
+                                    Console.WriteLine("Returned cache copy");
+                                    SocketCouple.ClientBridgeSocket.Send(cacheBuffer, cacheBuffer.Length, SocketFlags.None);
+                                    
+                                    continue;
+                                }
+                                else
+                                {
+                                    _messages.Enqueue(tdsMessage);
+                                }
+                            }
+                        }
+                        
+                        
                         OnTDSMessageReceived(tdsMessage);
                         tdsMessage = null;
                     }
@@ -114,6 +143,25 @@ namespace TDSBridge.Common
                 {
                     Header.TDSHeader header = new Header.TDSHeader(bBuffer);
 
+                    _messages.TryDequeue(out TDSMessage msg);
+
+                    if (msg is SQLBatchMessage)
+                    {
+                        SQLBatchMessage bm = (SQLBatchMessage)msg;
+                        var query = bm.GetBatchText();
+
+                        if (_cache.TryGetValue(query, out _))
+                        {
+                            //Console.WriteLine("Returned cache copy");
+                            continue;
+                        }
+                        else
+                        {
+                            Console.WriteLine("Returned real");
+                            _cache.Set(query, bBuffer);
+                        }
+                    }
+                    
                     //Console.WriteLine("[OUT][" + header.Type.ToString() + "]{" + iReceived + "}");
 
                     SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);

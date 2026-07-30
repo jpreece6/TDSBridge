@@ -9,20 +9,20 @@ namespace TDSBridge.Common.Header
     {
         public const int HEADER_SIZE = 8;
 
-        protected byte[] _Buffer = new byte[HEADER_SIZE];
+        private byte[] _buffer = new byte[HEADER_SIZE];
 
          public TDSHeader(byte[] bPacket)
         {
-            Array.Copy(bPacket, 0, this._Buffer, 0, HEADER_SIZE);
+            Array.Copy(bPacket, 0, this._buffer, 0, HEADER_SIZE);
         }
 
-        public HeaderType Type { get { return (HeaderType)_Buffer[0]; } }
-        public byte StatusBitMask { get { return _Buffer[1]; } }
+        public HeaderType Type { get { return (HeaderType)_buffer[0]; } }
+        public byte StatusBitMask { get { return _buffer[1]; } }
 
         public int LengthIncludingHeader { 
             get 
             {
-                return ((int)_Buffer[2]) * 0x100 + ((int)_Buffer[3]);       
+                return ((int)_buffer[2]) * 0x100 + ((int)_buffer[3]);       
             } 
         }
 
@@ -36,8 +36,8 @@ namespace TDSBridge.Common.Header
 
         public byte this[int idx]
         {
-            get { return _Buffer[idx]; }
-            set { _Buffer[idx] = value; }
+            get { return _buffer[idx]; }
+            set { _buffer[idx] = value; }
         }
 
         public override string ToString()

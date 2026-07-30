@@ -7,9 +7,12 @@
   <Project Path="TDSBridge.Common/TDSBridge.Common.csproj">
     <Build Solution="*|x86" Project="false" />
   </Project>
+  <Project Path="TDSBridge.DemoClient/TDSBridge.DemoClient.csproj" />
   <Project Path="TDSBridge/TDSBridge.csproj">
-    <Platform Project="x86" />
-    <Build Solution="*|Any CPU" Project="false" />
+    <Platform Solution="*|Mixed Platforms" Project="x86" />
+    <Platform Solution="*|x86" Project="x86" />
+    <Platform Solution="Release|Any CPU" Project="x86" />
+    <Build Solution="Release|Any CPU" Project="false" />
   </Project>
   <Properties Name="TeamFoundationVersionControl">
     <Property Name="SccEnterpriseProvider" Value="{4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}" />

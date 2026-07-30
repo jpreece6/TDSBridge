@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Net.Sockets;
+using Microsoft.Extensions.Caching.Memory;
 using TDSBridge.Common.Header;
 using TDSBridge.Common.Packet;
 
@@ -73,16 +74,19 @@ namespace TDSBridge.Common
         public event ConnectionDisconnectedDelegate ConnectionDisconnected;
         #endregion
 
+        private readonly IMemoryCache _cache;
+        
         #region Constructors
         /// <summary>
         /// Instanzia un nuovo BridgeAcceptor ma non apre le porte finche' non viene invocato Start().
         /// </summary>
         /// <param name="AcceptPort">Porta TCP su cui attendere connessioni.</param>
         /// <param name="SQLServerEndpoint">Indirizzo TCP/IP dell'instanza SQL Server.</param>
-        public BridgeAcceptor(int AcceptPort, System.Net.IPEndPoint SQLServerEndpoint)
+        public BridgeAcceptor(int AcceptPort, System.Net.IPEndPoint SQLServerEndpoint, IMemoryCache cache)
         {
             this._iAcceptPort = AcceptPort;
             this._ipeSQLServer = SQLServerEndpoint;
+            _cache = cache;
         }
         #endregion
 
@@ -135,7 +139,7 @@ namespace TDSBridge.Common
                                  sc.BridgeSQLSocket = new Socket(SQLServerEndpoint.AddressFamily, SocketType.Stream, ProtocolType.IP);
                                  sc.BridgeSQLSocket.Connect(SQLServerEndpoint);
 
-                                 BridgedConnection bc = new BridgedConnection(this, sc);
+                                 BridgedConnection bc = new BridgedConnection(this, sc, _cache);
                                  bc.Start();
                                  mre.Set();
                              }

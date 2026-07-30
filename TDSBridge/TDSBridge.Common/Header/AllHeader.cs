@@ -23,7 +23,7 @@ namespace TDSBridge.Common.Header
 
         public AllHeader(byte[] bPayload)
         {
-            this._bPayload = bPayload;
+            _bPayload = bPayload;
         }
     }
 }
