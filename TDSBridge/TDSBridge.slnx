@@ -1,0 +1,26 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="Mixed Platforms" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="TDSBridge.Common/TDSBridge.Common.csproj">
+    <Build Solution="*|x86" Project="false" />
+  </Project>
+  <Project Path="TDSBridge/TDSBridge.csproj">
+    <Platform Project="x86" />
+    <Build Solution="*|Any CPU" Project="false" />
+  </Project>
+  <Properties Name="TeamFoundationVersionControl">
+    <Property Name="SccEnterpriseProvider" Value="{4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}" />
+    <Property Name="SccLocalPath0" Value="." />
+    <Property Name="SccLocalPath1" Value="TDSBridge.Common" />
+    <Property Name="SccLocalPath2" Value="TDSBridge" />
+    <Property Name="SccNumberOfProjects" Value="3" />
+    <Property Name="SccProjectName1" Value="TDSBridge.Common" />
+    <Property Name="SccProjectName2" Value="TDSBridge" />
+    <Property Name="SccProjectUniqueName1" Value="TDSBridge.Common\\TDSBridge.Common.csproj" />
+    <Property Name="SccProjectUniqueName2" Value="TDSBridge\\TDSBridge.csproj" />
+    <Property Name="SccTeamFoundationServer" Value="http://vstfcodebox:8080/tfs/tau" />
+  </Properties>
+</Solution>
