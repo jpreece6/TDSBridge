@@ -89,18 +89,18 @@ namespace TDSBridge.Common
                             
                             if (query.StartsWith("select", StringComparison.OrdinalIgnoreCase))
                             {
-                                if (_cache.TryGetValue(query, out CachedMessage cacheMessage))
+                                if (_cache.TryGetValue(query, out List<ServerResponse> cacheMessage))
                                 {
-                                    //Console.WriteLine("Returned cache copy");
+                                    Console.WriteLine("Returned cache copy");
 
-                                    //foreach (var packet in cacheMessage.Payload)
-                                    //{
-                                    //    SocketCouple.ClientBridgeSocket.Send(packet, packet.Length, SocketFlags.None);
-                                    //}
+                                    foreach (var item in cacheMessage)
+                                    {
+                                        SocketCouple.ClientBridgeSocket.Send(item.Payload, item.Received, SocketFlags.None);
+                                    }
 
                                     
                                     
-                                    //continue;
+                                    continue;
                                 }
                                 else
                                 {
@@ -154,6 +154,48 @@ namespace TDSBridge.Common
                 while ((iReceived = SocketCouple.BridgeSQLSocket.Receive(bBuffer, SocketFlags.None)) > 0)
                 {
                     Header.TDSHeader header = new Header.TDSHeader(bBuffer);
+                    
+                    if (_messages.TryDequeue(out TDSMessage msg))
+                    {
+                        if (bBuffer[1] == 1)
+                        {
+                            // Add last packet
+                            tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
+                            
+                            // Store in cache
+                            var bm = msg as SQLBatchMessage;
+                            var query = bm.GetBatchText();
+                            if (_cache.TryGetValue(query, out List<ServerResponse> cachedData))
+                            {
+                                tempMessageBugffer = (cachedData);
+                            }
+                            else
+                            {
+                                _cache.Set(query, new List<ServerResponse> (tempMessageBugffer));
+                            }
+
+                            foreach (var item in tempMessageBugffer)
+                            {
+                                SocketCouple.ClientBridgeSocket.Send(item.Payload, item.Received, SocketFlags.None);
+                            }
+
+                            tempMessageBugffer.Clear();
+                            
+                            //SocketCouple.ClientBridgeSocket.Send(tempMessageBugffer[0].Payload, tempMessageBugffer[0].Received, SocketFlags.None);
+                        }
+                        else
+                        {
+                            _messages.Enqueue(msg);
+                            tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
+                            //SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
+                        }
+
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Send {iReceived}");
+                        SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
+                    }
 
                     //if (header.Type == HeaderType.TabularResult || header.Type == HeaderType.SQLBatch)
                     //{
@@ -213,37 +255,6 @@ namespace TDSBridge.Common
                     //    SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
                     //}
 
-                    if (header.Type == HeaderType.SQLBatch)
-                    {
-                        if (bBuffer[1] == 1)
-                        {
-                            if (tempMessageBugffer.Count > 0)
-                            {
-
-                                foreach (var item in tempMessageBugffer)
-                                {
-                                    SocketCouple.ClientBridgeSocket.Send(item.Payload, item.Received, SocketFlags.None);
-                                }
-
-                                tempMessageBugffer.Clear();
-                            }
-                            else
-                            {
-                                SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
-                            }
-                        }
-                        else
-                        {
-                            tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
-                        }
-
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Send {iReceived}");
-                        SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
-                    }
-
                 }
             }
             catch (Exception e)
@@ -294,12 +305,12 @@ namespace TDSBridge.Common
     class ServerResponse
     {
         public readonly int Received;
-        public readonly byte[] Payload;
+        public readonly byte[] Payload = new byte[4096];
 
         public ServerResponse(int received, byte[] payload)
         {
             Received = received;
-            Payload = payload;
+            Array.Copy(payload, Payload, payload.Length);
         }
     }
 
