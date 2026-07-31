@@ -87,14 +87,20 @@ namespace TDSBridge.Common
                         {
                             var query = bm.GetBatchText();
                             
-                            if (query.StartsWith("select"))
+                            if (query.StartsWith("select", StringComparison.OrdinalIgnoreCase))
                             {
-                                if (_cache.TryGetValue(query, out byte[] cacheBuffer))
+                                if (_cache.TryGetValue(query, out CachedMessage cacheMessage))
                                 {
-                                    Console.WriteLine("Returned cache copy");
-                                    SocketCouple.ClientBridgeSocket.Send(cacheBuffer, cacheBuffer.Length, SocketFlags.None);
+                                    //Console.WriteLine("Returned cache copy");
+
+                                    //foreach (var packet in cacheMessage.Payload)
+                                    //{
+                                    //    SocketCouple.ClientBridgeSocket.Send(packet, packet.Length, SocketFlags.None);
+                                    //}
+
                                     
-                                    continue;
+                                    
+                                    //continue;
                                 }
                                 else
                                 {
@@ -108,6 +114,7 @@ namespace TDSBridge.Common
                         tdsMessage = null;
                     }
 
+                    Console.WriteLine("Send header to server");
                     SocketCouple.BridgeSQLSocket.Send(bHeader, bHeader.Length, SocketFlags.None);
 
                     if (header.Type == (HeaderType)23)
@@ -116,8 +123,11 @@ namespace TDSBridge.Common
                     }
                     else
                     {
+                        Console.WriteLine("Send data header to server");
                         SocketCouple.BridgeSQLSocket.Send(bBuffer, header.PayloadSize, SocketFlags.None);
                     }
+
+                    
 
                     //sc.OutputSocket.Send(bBuffer, header.LengthIncludingHeader, SocketFlags.None);
                     //sc.OutputSocket.Send(bBuffer, iReceived, SocketFlags.None);
@@ -139,32 +149,101 @@ namespace TDSBridge.Common
                 byte[] bBuffer = new byte[4096];
                 int iReceived = 0;
 
+                List<ServerResponse> tempMessageBugffer = new List<ServerResponse>();
+
                 while ((iReceived = SocketCouple.BridgeSQLSocket.Receive(bBuffer, SocketFlags.None)) > 0)
                 {
                     Header.TDSHeader header = new Header.TDSHeader(bBuffer);
 
-                    _messages.TryDequeue(out TDSMessage msg);
+                    //if (header.Type == HeaderType.TabularResult || header.Type == HeaderType.SQLBatch)
+                    //{
+                    //    if (iReceived >= 4096)
+                    //    {
+                    //        tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
+                    //        continue;
+                    //    }
 
-                    if (msg is SQLBatchMessage)
+                    //    if (tempMessageBugffer.Count > 0)
+                    //    {
+                    //        tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
+                    //    }
+
+
+                    //    _messages.TryDequeue(out TDSMessage msg);
+
+                    //    if (msg is SQLBatchMessage)
+                    //    {
+                    //        SQLBatchMessage bm = (SQLBatchMessage)msg;
+                    //        var query = bm.GetBatchText();
+
+                    //        if (query.StartsWith("select", StringComparison.OrdinalIgnoreCase))
+                    //        {
+
+                    //            if (_cache.TryGetValue(query, out _))
+                    //            {
+                    //                //Console.WriteLine("Returned cache copy");
+                    //                continue;
+                    //            }
+                    //            else
+                    //            {
+                    //                Console.WriteLine("Returned real");
+                    //                //_cache.Set(query, new CachedMessage(tempMessageBugffer));
+
+                    //            }
+                    //        }
+                    //    }
+
+
+                    //    if (tempMessageBugffer.Count > 0)
+                    //    {
+                    //        foreach (var packet in tempMessageBugffer)
+                    //        {
+                    //            SocketCouple.ClientBridgeSocket.Send(packet.Payload, packet.Received, SocketFlags.None);
+                    //        }
+
+                    //        tempMessageBugffer.Clear();
+                    //    }
+                    //    else
+                    //    {
+                    //        SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
+                    //    }
+                    //}
+                    //else
+                    //{
+                    //    SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
+                    //}
+
+                    if (header.Type == HeaderType.SQLBatch)
                     {
-                        SQLBatchMessage bm = (SQLBatchMessage)msg;
-                        var query = bm.GetBatchText();
-
-                        if (_cache.TryGetValue(query, out _))
+                        if (bBuffer[1] == 1)
                         {
-                            //Console.WriteLine("Returned cache copy");
-                            continue;
+                            if (tempMessageBugffer.Count > 0)
+                            {
+
+                                foreach (var item in tempMessageBugffer)
+                                {
+                                    SocketCouple.ClientBridgeSocket.Send(item.Payload, item.Received, SocketFlags.None);
+                                }
+
+                                tempMessageBugffer.Clear();
+                            }
+                            else
+                            {
+                                SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
+                            }
                         }
                         else
                         {
-                            Console.WriteLine("Returned real");
-                            _cache.Set(query, bBuffer);
+                            tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
                         }
-                    }
-                    
-                    //Console.WriteLine("[OUT][" + header.Type.ToString() + "]{" + iReceived + "}");
 
-                    SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Send {iReceived}");
+                        SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
+                    }
+
                 }
             }
             catch (Exception e)
@@ -210,5 +289,27 @@ namespace TDSBridge.Common
             }
         }
         #endregion
+    }
+
+    class ServerResponse
+    {
+        public readonly int Received;
+        public readonly byte[] Payload;
+
+        public ServerResponse(int received, byte[] payload)
+        {
+            Received = received;
+            Payload = payload;
+        }
+    }
+
+    class CachedMessage
+    {
+        public readonly List<byte[]> Payload;
+
+        public CachedMessage(List<byte[]> payload)
+        {
+            Payload = payload;
+        }
     }
 }
