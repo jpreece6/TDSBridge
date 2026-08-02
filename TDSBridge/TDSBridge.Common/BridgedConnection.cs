@@ -6,6 +6,7 @@ using TDSBridge.Common.Header;
 using TDSBridge.Common.Message;
 using TDSBridge.Common.Packet;
 using TDSBridge.Common.Cache;
+using TDSBridge.Common.Middleware;
 
 namespace TDSBridge.Common
 {
@@ -19,23 +20,31 @@ namespace TDSBridge.Common
         public SocketCouple SocketCouple { get; protected set; }
 
         private ConcurrentQueue<TDSMessage> _messages = new();
+        private TDSMessage? _lastMessage;
         
-        readonly ICache  _cache;
-        readonly string _clientHost;
+        readonly MiddlewareDelegate<MessageContext> _outboundPipline;
+        readonly MiddlewareDelegate<MessageContext> _inboundPipline;
 
-        public BridgedConnection(BridgeAcceptor BridgeAcceptor, SocketCouple SocketCouple, ICache cache)
+        public BridgedConnection(BridgeAcceptor BridgeAcceptor, SocketCouple SocketCouple, IServiceProvider  serviceProvider)
         {
             this.BridgeAcceptor = BridgeAcceptor;
             this.SocketCouple = SocketCouple;
-            this._cache = cache;
             
-            string address = ((IPEndPoint)SocketCouple.ClientBridgeSocket.RemoteEndPoint).Address.ToString();
-            var host = Dns.GetHostEntry(address);
-
-            if (host != null)
-            {
-                _clientHost = host.HostName;
-            }
+            // Responsible for packets from client to server
+            _outboundPipline = new MiddlewarePipelineBuilder<MessageContext>()
+                    .UseMiddleware<LoggingMiddleware>(serviceProvider)
+                    .UseMiddleware<ErrorHandlingMiddleware>(serviceProvider)
+                    .UseMiddleware<CacheReadQueryMiddleware>(serviceProvider)
+                    .UseMiddleware<OutboundServerMiddleware>(serviceProvider)
+                    .Build();
+            
+            
+            // Responsible for packets from server to client
+            _inboundPipline = new MiddlewarePipelineBuilder<MessageContext>()
+                .UseMiddleware<ErrorHandlingMiddleware>(serviceProvider)
+                .UseMiddleware<CacheWriteQueryMiddleware>(serviceProvider)
+                .UseMiddleware<InboundServerMiddleware>(serviceProvider)
+                .Build();
         }
 
         public void Start()
@@ -49,7 +58,7 @@ namespace TDSBridge.Common
             tOut.Start();
         }
 
-        protected virtual void ClientBridgeThread()
+        protected virtual async void ClientBridgeThread()
         {
             try
             {
@@ -62,6 +71,8 @@ namespace TDSBridge.Common
                 while ((iReceived = SocketCouple.ClientBridgeSocket.Receive(bHeader, Header.TDSHeader.HEADER_SIZE, SocketFlags.None)) > 0)
                 //while ((iReceived = sc.InputSocket.Receive(bBuffer, SocketFlags.None)) > 0)
                 {
+                    
+                    
                     Header.TDSHeader header = new Header.TDSHeader(bHeader);
 
                     int iMinBufferSize = Math.Max(0x1000, header.LengthIncludingHeader + 1);
@@ -91,78 +102,27 @@ namespace TDSBridge.Common
 
                     if ((header.StatusBitMask & StatusBitMask.END_OF_MESSAGE) == StatusBitMask.END_OF_MESSAGE)
                     {
-                        SQLBatchMessage bm = tdsMessage as SQLBatchMessage;
-
-                        if (bm != null)
-                        {
-                            var query = bm.GetBatchText();
-                            
-                            // Select statements we want to cache the server returned result to we need to
-                            // store this message so we can link client query to result
-                            if (query.StartsWith("select", StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (_cache.TryGetValue($"{_clientHost}_{query}", out QueryRecord queryRecord))
-                                {
-                                    Console.WriteLine("Returned cache copy");
-
-                                    foreach (var item in queryRecord.ServerResponse)
-                                    {
-                                        SocketCouple.ClientBridgeSocket.Send(item.Payload, item.Received, SocketFlags.None);
-                                    }
-                                    
-                                    continue;
-                                }
-                                else
-                                {
-                                    _messages.Enqueue(tdsMessage);
-                                }
-                            }
-                            else if (query.StartsWith("insert into", StringComparison.OrdinalIgnoreCase) ||
-                                     query.StartsWith("update", StringComparison.OrdinalIgnoreCase) ||
-                                     query.StartsWith("delete", StringComparison.OrdinalIgnoreCase))
-                            {
-                                // write operations need to be stored if the write action fails
-                                
-                                
-                                
-                            }
-                            else
-                            {
-                                // Everything else gets sent to the server
-                            }
-                        }
+                        _lastMessage = tdsMessage;
                         
+                        var msg = new MessageContext()
+                        {
+                            MessageId = Guid.NewGuid().ToString(),
+                            ConnectionType = ConnectionType.ClientBridge,
+                            TdsMessage = tdsMessage,
+                            TdsHeader = header,
+                            SocketCouple = SocketCouple,
+                            Received = iReceived,
+                            QueueMessages = _messages,
+                        };
+                    
+                        Array.Copy(bBuffer, msg.Payload, bBuffer.Length);
+                        Array.Copy(bHeader, msg.HeaderPayload, bHeader.Length);
+                    
+                        await _outboundPipline(msg);
                         
                         OnTDSMessageReceived(tdsMessage);
                         tdsMessage = null;
                     }
-
-                    try
-                    {
-                        Console.WriteLine("Send header to server");
-                        SocketCouple.BridgeSQLSocket.Send(bHeader, bHeader.Length, SocketFlags.None);
-
-                        if (header.Type == (HeaderType)23)
-                        {
-                            SocketCouple.BridgeSQLSocket.Send(bBuffer, iReceived, SocketFlags.None);
-                        }
-                        else
-                        {
-                            Console.WriteLine("Send data header to server");
-                            SocketCouple.BridgeSQLSocket.Send(bBuffer, header.PayloadSize, SocketFlags.None);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        // TODO save inserts
-
-                        throw;
-                    }
-
-
-
-                    //sc.OutputSocket.Send(bBuffer, header.LengthIncludingHeader, SocketFlags.None);
-                    //sc.OutputSocket.Send(bBuffer, iReceived, SocketFlags.None);
                 }
             }
             catch (Exception e)
@@ -174,7 +134,7 @@ namespace TDSBridge.Common
             //Console.WriteLine("Closing InputThread");
         }
 
-        protected virtual void BridgeSQLThread()
+        protected virtual async void BridgeSQLThread()
         {
             try
             {
@@ -186,53 +146,24 @@ namespace TDSBridge.Common
                 while ((iReceived = SocketCouple.BridgeSQLSocket.Receive(bBuffer, SocketFlags.None)) > 0)
                 {
                     Header.TDSHeader header = new Header.TDSHeader(bBuffer);
+
+                    _messages.TryDequeue(out TDSMessage msg);
+
+                    var context = new MessageContext()
+                    {
+                        MessageId = Guid.NewGuid().ToString(),
+                        ConnectionType =  ConnectionType.BridgeSQL,
+                        TdsMessage = msg,
+                        TdsHeader = header,
+                        Received = iReceived,
+                        SocketCouple = SocketCouple,
+                        ServerMessages = tempMessageBugffer,
+                        QueueMessages =  _messages
+                    };
                     
-                    if (_messages.TryDequeue(out TDSMessage msg))
-                    {
-                        if (bBuffer[1] == 1)
-                        {
-                            // Add last packet
-                            tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
-                            
-                            // If SQL batch then we want to cache the result
-                            var bm = msg as SQLBatchMessage;
-                            var query = bm.GetBatchText();
-                            if (_cache.TryGetValue(query, out List<ServerResponse> cachedData))
-                            {
-                                tempMessageBugffer = (cachedData);
-                            }
-                            else
-                            {
-                                _cache.Set($"{_clientHost}_{query}", new QueryRecord()
-                                {
-                                    ClientId = _clientHost,
-                                    ServerResponse = new List<ServerResponse> (tempMessageBugffer),
-                                    QueryDate = DateTime.UtcNow,
-                                });
-                            }
-
-                            foreach (var item in tempMessageBugffer)
-                            {
-                                SocketCouple.ClientBridgeSocket.Send(item.Payload, item.Received, SocketFlags.None);
-                            }
-
-                            tempMessageBugffer.Clear();
-                            
-                            //SocketCouple.ClientBridgeSocket.Send(tempMessageBugffer[0].Payload, tempMessageBugffer[0].Received, SocketFlags.None);
-                        }
-                        else
-                        {
-                            _messages.Enqueue(msg);
-                            tempMessageBugffer.Add(new ServerResponse(iReceived, bBuffer));
-                            //SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
-                        }
-
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Send {iReceived}");
-                        SocketCouple.ClientBridgeSocket.Send(bBuffer, iReceived, SocketFlags.None);
-                    }
+                    Array.Copy(bBuffer, context.Payload, bBuffer.Length);
+                    
+                    await _inboundPipline(context);
                 }
             }
             catch (Exception e)

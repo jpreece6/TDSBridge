@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TDSBridge.Common;
 using TDSBridge.Common.Cache;
+using TDSBridge.Common.Middleware;
 
 namespace TDSBridge;
 
@@ -13,18 +14,18 @@ public class ServerService : BackgroundService
     readonly ILogger<ServerService> _logger;
     readonly IHostApplicationLifetime _applicationLifetime;
     readonly ServerSettings _serverSettings;
-    readonly ICache _cache;
-
+    readonly IServiceProvider _serviceProvider;
+    
     public ServerService(
         IHostApplicationLifetime appLifetime,
         ILogger<ServerService> logger,
         IOptions<ServerSettings> settings,
-        ICache cache)
+        IServiceProvider serviceProvider)
     {
+        _serviceProvider = serviceProvider;
         _logger = logger;
         _applicationLifetime = appLifetime;
         _serverSettings = settings.Value;
-        _cache = cache;
     }
 
     static int iRPC = 0;
@@ -38,7 +39,7 @@ public class ServerService : BackgroundService
             BridgeAcceptor b = new BridgeAcceptor(
                 _serverSettings.ListeningPort,
                 new System.Net.IPEndPoint(iphe.AddressList[0], _serverSettings.ServerPort),
-                _cache
+                _serviceProvider
             );
 
             b.TDSMessageReceived += b_TDSMessageReceived;
@@ -46,6 +47,9 @@ public class ServerService : BackgroundService
             b.ConnectionAccepted += b_ConnectionAccepted;
             b.ConnectionDisconnected += b_ConnectionClosed;
 
+            var builder = new MiddlewarePipelineBuilder<MessageContext>();
+
+            
             b.Start();
 
             while (!stoppingToken.IsCancellationRequested)

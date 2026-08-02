@@ -12,10 +12,14 @@ try
     using SqlDataReader reader = command.ExecuteReader();
 
 
+    int rowCount = 0;
     while (await reader.ReadAsync())
     {
+        rowCount++;
         Console.WriteLine(reader.GetString(1));
     }
+
+    Console.WriteLine($"\nrows {rowCount}");
 }
 catch (Exception ex)
 {

@@ -76,6 +76,7 @@ namespace TDSBridge.Common
         #endregion
 
         private readonly ICache _cache;
+        private readonly IServiceProvider _serviceProvider;
         
         #region Constructors
         /// <summary>
@@ -83,11 +84,12 @@ namespace TDSBridge.Common
         /// </summary>
         /// <param name="AcceptPort">Porta TCP su cui attendere connessioni.</param>
         /// <param name="SQLServerEndpoint">Indirizzo TCP/IP dell'instanza SQL Server.</param>
-        public BridgeAcceptor(int AcceptPort, System.Net.IPEndPoint SQLServerEndpoint, ICache cache)
+        public BridgeAcceptor(int AcceptPort, System.Net.IPEndPoint SQLServerEndpoint, IServiceProvider serviceProvider)
         {
-            this._iAcceptPort = AcceptPort;
-            this._ipeSQLServer = SQLServerEndpoint;
-            _cache = cache;
+            _iAcceptPort = AcceptPort;
+            _ipeSQLServer = SQLServerEndpoint;
+            
+            _serviceProvider = serviceProvider;
         }
         #endregion
 
@@ -140,7 +142,7 @@ namespace TDSBridge.Common
                                  sc.BridgeSQLSocket = new Socket(SQLServerEndpoint.AddressFamily, SocketType.Stream, ProtocolType.IP);
                                  sc.BridgeSQLSocket.Connect(SQLServerEndpoint);
 
-                                 BridgedConnection bc = new BridgedConnection(this, sc, _cache);
+                                 BridgedConnection bc = new BridgedConnection(this, sc, _serviceProvider);
                                  bc.Start();
                                  mre.Set();
                              }

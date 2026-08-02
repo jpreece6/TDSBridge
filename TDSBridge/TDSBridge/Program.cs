@@ -22,6 +22,7 @@ namespace TDSBridge
                 .ConfigureServices((hc, services) =>
                 {
                     services.UseRedis(hc.Configuration);
+                    //services.UseInMemoryCache(); 
                     services.AddHostedService<ServerService>();
                     services.AddOptions<ServerSettings>().Bind(hc.Configuration.GetSection("ServerSettings"));
 
