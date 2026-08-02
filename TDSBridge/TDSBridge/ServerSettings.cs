@@ -1,6 +1,6 @@
 ﻿namespace TDSBridge;
 
-public class ServerSettings
+public record ServerSettings
 {
     public int ListeningPort { get; set; }
     public string ServerAddress { get; set; }

@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Caching.Memory;
 using TDSBridge.Common.Header;
 using TDSBridge.Common.Packet;
+using TDSBridge.Common.Cache;
 
 namespace TDSBridge.Common
 {
@@ -74,7 +75,7 @@ namespace TDSBridge.Common
         public event ConnectionDisconnectedDelegate ConnectionDisconnected;
         #endregion
 
-        private readonly IMemoryCache _cache;
+        private readonly ICache _cache;
         
         #region Constructors
         /// <summary>
@@ -82,7 +83,7 @@ namespace TDSBridge.Common
         /// </summary>
         /// <param name="AcceptPort">Porta TCP su cui attendere connessioni.</param>
         /// <param name="SQLServerEndpoint">Indirizzo TCP/IP dell'instanza SQL Server.</param>
-        public BridgeAcceptor(int AcceptPort, System.Net.IPEndPoint SQLServerEndpoint, IMemoryCache cache)
+        public BridgeAcceptor(int AcceptPort, System.Net.IPEndPoint SQLServerEndpoint, ICache cache)
         {
             this._iAcceptPort = AcceptPort;
             this._ipeSQLServer = SQLServerEndpoint;

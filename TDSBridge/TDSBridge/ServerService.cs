@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TDSBridge.Common;
+using TDSBridge.Common.Cache;
 
 namespace TDSBridge;
 
@@ -12,13 +13,13 @@ public class ServerService : BackgroundService
     readonly ILogger<ServerService> _logger;
     readonly IHostApplicationLifetime _applicationLifetime;
     readonly ServerSettings _serverSettings;
-    readonly IMemoryCache  _cache;
+    readonly ICache _cache;
 
     public ServerService(
         IHostApplicationLifetime appLifetime,
         ILogger<ServerService> logger,
         IOptions<ServerSettings> settings,
-        IMemoryCache cache)
+        ICache cache)
     {
         _logger = logger;
         _applicationLifetime = appLifetime;

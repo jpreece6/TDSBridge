@@ -2,9 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using TDSBridge.Common;
+using TDSBridge.Common.Cache;
 
 namespace TDSBridge
 {
@@ -20,16 +21,13 @@ namespace TDSBridge
                 })
                 .ConfigureServices((hc, services) =>
                 {
-                    services.AddMemoryCache();
+                    services.UseRedis(hc.Configuration);
                     services.AddHostedService<ServerService>();
                     services.AddOptions<ServerSettings>().Bind(hc.Configuration.GetSection("ServerSettings"));
+
+                    services.AddHostedService<WriteBackService>();
                 })
                 .RunConsoleAsync();
-        }
-
-        static void Usage()
-        {
-            Console.WriteLine(System.Reflection.Assembly.GetExecutingAssembly().GetName().Name + " <listen port> <sql server address> <sql server port>");
         }
     }
 }
